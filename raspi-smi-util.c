@@ -216,13 +216,16 @@ int main(int argc, char *argv[])
 		fprintf(stderr, "%s:%d: error: open: %s: %s\n", __FILE__, __LINE__, smi_dev, strerror(errno));
 		exit(EXIT_FAILURE);
 	}
+	free(smi_dev);
 
 	if (action & ACTION_GET)
 		get_settings(fd);
 	if (action & ACTION_SET)
 		set_settings(fd);
-	if (action & ACTION_ADDR)
+	if (action & ACTION_ADDR) {
 		set_addr(fd, addr_str);
+		free(addr_str);
+	}
 
 	reti = close(fd);
 	if (reti == -1) {
