@@ -152,7 +152,7 @@ static void set_addr(int fd, const char *addr_str)
 	addr = atoi(addr_str);
 
 	if (verbose)
-		printf("%s:%d: addr = %u\n", __FILE__, __LINE__, addr);
+		printf("%s:%d: addr = 0x%08x\n", __FILE__, __LINE__, addr);
 
 	reti = ioctl(fd, BCM2835_SMI_IOC_ADDRESS, &addr);
 	if (reti == -1) {
