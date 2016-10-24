@@ -1,4 +1,5 @@
 CFLAGS += -I. -pipe -Wall -Wextra -O2 -g
+LDFLAGS += -lcrypto
 
 RM := rm -f
 

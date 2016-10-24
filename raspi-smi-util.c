@@ -9,6 +9,7 @@
 #include <sys/ioctl.h>
 #include <sys/types.h>
 #include <errno.h>
+#include <openssl/md5.h>
 #include "bcm2835_smi.h"
 
 #define SMI_DEV_DEFAULT "/dev/smi"
@@ -55,6 +56,17 @@ static long xatol(const char *nptr)
 {
 	/* FIXME: Use strtol to support prefixes such as 0x and 0b. */
 	return atol(nptr);
+}
+
+static void print_hash(const void *d, const size_t n)
+{
+	size_t i;
+	uint8_t hash[MD5_DIGEST_LENGTH];
+	MD5(d, n, hash);
+	printf("Hash: ");
+	for (i = 0; i < sizeof(hash); i ++)
+		printf("%02x", hash[i]);
+	printf("\n");
 }
 
 static void print_settings(struct smi_settings ss)
@@ -211,6 +223,7 @@ static void test_write(const int fd, size_t size)
 		p[size - 2] = 0xa5;
 		p[size - 1] = 0x5a;
 	}
+	print_hash(p, size);
 
 	if (verbose)
 		printf("%s:%d: Writing to SMI\n", __FILE__, __LINE__);
@@ -247,6 +260,7 @@ static void test_read(const int fd, size_t size)
 		fprintf(stderr, "%s:%d: error: short or extra read\n", __FILE__, __LINE__);
 		exit(EXIT_FAILURE);
 	}
+	print_hash(p, size);
 	free(p);
 
 	time = (end.tv_sec - start.tv_sec) + (end.tv_usec - start.tv_usec) * 1e-6;
