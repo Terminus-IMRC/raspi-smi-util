@@ -28,6 +28,16 @@ static void usage()
 	printf("  -h          Print this help\n");
 }
 
+static char* xstrdup(const char *str)
+{
+	char *newstr = strdup(str);
+	if (newstr == NULL) {
+		fprintf(stderr, "%s:%d: error: Failed to duplicate string\n", __FILE__, __LINE__);
+		exit(EXIT_FAILURE);
+	}
+	return newstr;
+}
+
 static void print_settings(struct smi_settings ss)
 {
 	printf("data_width=%d (", ss.data_width);
@@ -161,6 +171,8 @@ static void set_addr(int fd, const char *addr_str)
 	}
 }
 
+static void test_write(int fd, const char *size_
+
 int main(int argc, char *argv[])
 {
 	int c, fd, reti;
@@ -176,7 +188,7 @@ int main(int argc, char *argv[])
 	while ((c = getopt(argc, argv, "d:gsa:vh")) != -1) {
 		switch (c) {
 			case 'd':
-				smi_dev = strdup(optarg);
+				smi_dev = xstrdup(optarg);
 				break;
 			case 'g':
 				action |= ACTION_GET;
@@ -185,8 +197,8 @@ int main(int argc, char *argv[])
 				action |= ACTION_SET;
 				break;
 			case 'a':
-				addr_str = strdup(optarg);
 				action |= ACTION_ADDR;
+				addr_str = xstrdup(optarg);
 				break;
 
 			case 'v':
@@ -208,7 +220,7 @@ int main(int argc, char *argv[])
 	}
 
 	if (smi_dev == NULL)
-		smi_dev = strdup(SMI_DEV_DEFAULT);
+		smi_dev = xstrdup(SMI_DEV_DEFAULT);
 	if (verbose)
 		printf("%s:%d: Opening %s\n", __FILE__, __LINE__, smi_dev);
 	fd = open(smi_dev, O_RDWR);
