@@ -2,11 +2,12 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
+#include <fcntl.h>
 #include <unistd.h>
-#include <sys/types.h>
+#include <sys/time.h>
 #include <sys/stat.h>
 #include <sys/ioctl.h>
-#include <fcntl.h>
+#include <sys/types.h>
 #include <errno.h>
 #include "bcm2835_smi.h"
 
@@ -23,6 +24,8 @@ static void usage()
 	printf("  -g          Get settings from SMI and print to stdout\n");
 	printf("  -s          Set settings to SMI, reading from stdin\n");
 	printf("  -a addr     Set addr of SMI\n");
+	printf("  -w size     Test: Write size bytes to SMI\n");
+	printf("  -r size     Test: Read size bytes from SMI\n");
 	printf("  -d device   SMI device name (default:%s)\n", SMI_DEV_DEFAULT);
 	printf("  -v          Be verbose\n");
 	printf("  -h          Print this help\n");
@@ -36,6 +39,22 @@ static char* xstrdup(const char *str)
 		exit(EXIT_FAILURE);
 	}
 	return newstr;
+}
+
+static void* xmalloc(size_t size)
+{
+	uint8_t *p = malloc(size);
+	if (p == NULL) {
+		fprintf(stderr, "%s:%d: error: Failed to allocate %u bytes of memory\n", __FILE__, __LINE__, size);
+		exit(EXIT_FAILURE);
+	}
+	return p;
+}
+
+static long xatol(const char *nptr)
+{
+	/* FIXME: Use strtol to support prefixes such as 0x and 0b. */
+	return atol(nptr);
 }
 
 static void print_settings(struct smi_settings ss)
@@ -171,21 +190,84 @@ static void set_addr(int fd, const char *addr_str)
 	}
 }
 
-static void test_write(int fd, const char *size_
+static void test_write(const int fd, size_t size)
+{
+	uint8_t *p = xmalloc(size);
+	double time;
+	struct timeval start, end;
+	ssize_t retss;
+
+	{
+		size_t i;
+		if (verbose)
+			printf("%s:%d: Initializing memory\n", __FILE__, __LINE__);
+		for (i = 0; i < size / 4; i += 4) {
+			p[i + 0] = 0x5a;
+			p[i + 1] = 0xa5;
+			p[i + 2] = 0xa5;
+			p[i + 3] = 0x5a;
+		}
+		p[size - 3] = 0xa5;
+		p[size - 2] = 0xa5;
+		p[size - 1] = 0x5a;
+	}
+
+	if (verbose)
+		printf("%s:%d: Writing to SMI\n", __FILE__, __LINE__);
+	gettimeofday(&start, NULL);
+	retss = write(fd, p, size);
+	gettimeofday(&end, NULL);
+	if (retss == -1) {
+		fprintf(stderr, "%s:%d: error: write: %s\n", __FILE__, __LINE__, strerror(errno));
+		exit(EXIT_FAILURE);
+	} else if ((size_t) retss != size) {
+		fprintf(stderr, "%s:%d: error: short or extra write\n", __FILE__, __LINE__);
+		exit(EXIT_FAILURE);
+	}
+	free(p);
+
+	time = (end.tv_sec - start.tv_sec) + (end.tv_usec - start.tv_usec) * 1e-6;
+	printf("Write: %g [s], %g [B/s]\n", time, size / time);
+}
+
+static void test_read(const int fd, size_t size)
+{
+	uint8_t *p = xmalloc(size);
+	double time;
+	struct timeval start, end;
+	ssize_t retss;
+
+	gettimeofday(&start, NULL);
+	retss = read(fd, p, size);
+	gettimeofday(&end, NULL);
+	if (retss == -1) {
+		fprintf(stderr, "%s:%d: error: read: %s\n", __FILE__, __LINE__, strerror(errno));
+		exit(EXIT_FAILURE);
+	} else if ((size_t) retss != size) {
+		fprintf(stderr, "%s:%d: error: short or extra read\n", __FILE__, __LINE__);
+		exit(EXIT_FAILURE);
+	}
+	free(p);
+
+	time = (end.tv_sec - start.tv_sec) + (end.tv_usec - start.tv_usec) * 1e-6;
+	printf("Read: %g [s], %g [B/s]\n", time, size / time);
+}
 
 int main(int argc, char *argv[])
 {
 	int c, fd, reti;
-	char *smi_dev = NULL, *addr_str = NULL;
+	char *smi_dev = NULL, *addr_str = NULL, *size_str = NULL;
 	enum {
-		ACTION_GET  = 1 << 0,
-		ACTION_SET  = 1 << 1,
-		ACTION_ADDR = 1 << 2
+		ACTION_GET        = 1 << 0,
+		ACTION_SET        = 1 << 1,
+		ACTION_ADDR       = 1 << 2,
+		ACTION_TEST_WRITE = 1 << 3,
+		ACTION_TEST_READ  = 1 << 4
 	} action = 0;
 
 	progname = argv[0];
 
-	while ((c = getopt(argc, argv, "d:gsa:vh")) != -1) {
+	while ((c = getopt(argc, argv, "d:gsa:w:r:vh")) != -1) {
 		switch (c) {
 			case 'd':
 				smi_dev = xstrdup(optarg);
@@ -199,6 +281,18 @@ int main(int argc, char *argv[])
 			case 'a':
 				action |= ACTION_ADDR;
 				addr_str = xstrdup(optarg);
+				break;
+
+			case 'w':
+				action |= ACTION_TEST_WRITE;
+				if (size_str == NULL)
+					size_str = xstrdup(optarg);
+				break;
+
+			case 'r':
+				action |= ACTION_TEST_READ;
+				if (size_str == NULL)
+					size_str = xstrdup(optarg);
 				break;
 
 			case 'v':
@@ -216,6 +310,9 @@ int main(int argc, char *argv[])
 	if (!action) {
 		fprintf(stderr, "%s:%d: error: Specify at least one action\n", __FILE__, __LINE__);
 		usage();
+		exit(EXIT_FAILURE);
+	} else if ((action & ACTION_TEST_WRITE) && (action & ACTION_TEST_READ)) {
+		fprintf(stderr, "%s:%d: error: Write and read test cannot be performed at the same time\n", __FILE__, __LINE__);
 		exit(EXIT_FAILURE);
 	}
 
@@ -237,6 +334,14 @@ int main(int argc, char *argv[])
 	if (action & ACTION_ADDR) {
 		set_addr(fd, addr_str);
 		free(addr_str);
+	}
+	if (action & ACTION_TEST_WRITE) {
+		test_write(fd, xatol(size_str));
+		free(size_str);
+	}
+	if (action & ACTION_TEST_READ) {
+		test_read(fd, xatol(size_str));
+		free(size_str);
 	}
 
 	reti = close(fd);
