@@ -32,16 +32,6 @@ static void usage()
 	printf("  -h          Print this help\n");
 }
 
-static char* xstrdup(const char *str)
-{
-	char *newstr = strdup(str);
-	if (newstr == NULL) {
-		fprintf(stderr, "%s:%d: error: Failed to duplicate string\n", __FILE__, __LINE__);
-		exit(EXIT_FAILURE);
-	}
-	return newstr;
-}
-
 static void* xmalloc(size_t size)
 {
 	uint8_t *p = malloc(size);
@@ -185,12 +175,9 @@ static void set_settings(int fd)
 	}
 }
 
-static void set_addr(int fd, const char *addr_str)
+static void set_addr(int fd, unsigned int addr)
 {
 	int reti;
-	unsigned int addr;
-
-	addr = atoi(addr_str);
 
 	if (verbose)
 		printf("%s:%d: addr = 0x%08x\n", __FILE__, __LINE__, addr);
@@ -269,44 +256,51 @@ static void test_read(const int fd, size_t size)
 
 int main(int argc, char *argv[])
 {
-	int c, fd, reti;
-	char *smi_dev = NULL, *addr_str = NULL, *size_str = NULL;
-	enum {
-		ACTION_GET        = 1 << 0,
-		ACTION_SET        = 1 << 1,
-		ACTION_ADDR       = 1 << 2,
-		ACTION_TEST_WRITE = 1 << 3,
-		ACTION_TEST_READ  = 1 << 4
-	} action = 0;
+	int c, fd = -1, reti;
 
 	progname = argv[0];
+
+	fd = open(SMI_DEV_DEFAULT, O_RDWR);
+	if (fd == -1) {
+		fprintf(stderr, "%s:%d: error: open: %s: %s\n", __FILE__, __LINE__, SMI_DEV_DEFAULT, strerror(errno));
+		exit(EXIT_FAILURE);
+	}
 
 	while ((c = getopt(argc, argv, "d:gsa:w:r:vh")) != -1) {
 		switch (c) {
 			case 'd':
-				smi_dev = xstrdup(optarg);
+				reti = close(fd);
+				if (reti == -1) {
+					fprintf(stderr, "%s:%d: error: close: %s\n", __FILE__, __LINE__, strerror(errno));
+					exit(EXIT_FAILURE);
+				}
+				if (verbose)
+					printf("%s:%d: Opening %s\n", __FILE__, __LINE__, optarg);
+				fd = open(SMI_DEV_DEFAULT, O_RDWR);
+				if (fd == -1) {
+					fprintf(stderr, "%s:%d: error: open: %s: %s\n", __FILE__, __LINE__, optarg, strerror(errno));
+					exit(EXIT_FAILURE);
+				}
 				break;
+
 			case 'g':
-				action |= ACTION_GET;
+				get_settings(fd);
 				break;
+
 			case 's':
-				action |= ACTION_SET;
+				set_settings(fd);
 				break;
+
 			case 'a':
-				action |= ACTION_ADDR;
-				addr_str = xstrdup(optarg);
+				set_addr(fd, xatol(optarg));
 				break;
 
 			case 'w':
-				action |= ACTION_TEST_WRITE;
-				if (size_str == NULL)
-					size_str = xstrdup(optarg);
+				test_write(fd, xatol(optarg));
 				break;
 
 			case 'r':
-				action |= ACTION_TEST_READ;
-				if (size_str == NULL)
-					size_str = xstrdup(optarg);
+				test_read(fd, xatol(optarg));
 				break;
 
 			case 'v':
@@ -321,47 +315,13 @@ int main(int argc, char *argv[])
 		}
 	}
 
-	if (!action) {
-		fprintf(stderr, "%s:%d: error: Specify at least one action\n", __FILE__, __LINE__);
-		usage();
-		exit(EXIT_FAILURE);
-	} else if ((action & ACTION_TEST_WRITE) && (action & ACTION_TEST_READ)) {
-		fprintf(stderr, "%s:%d: error: Write and read test cannot be performed at the same time\n", __FILE__, __LINE__);
-		exit(EXIT_FAILURE);
-	}
-
-	if (smi_dev == NULL)
-		smi_dev = xstrdup(SMI_DEV_DEFAULT);
-	if (verbose)
-		printf("%s:%d: Opening %s\n", __FILE__, __LINE__, smi_dev);
-	fd = open(smi_dev, O_RDWR);
-	if (fd == -1) {
-		fprintf(stderr, "%s:%d: error: open: %s: %s\n", __FILE__, __LINE__, smi_dev, strerror(errno));
-		exit(EXIT_FAILURE);
-	}
-	free(smi_dev);
-
-	if (action & ACTION_GET)
-		get_settings(fd);
-	if (action & ACTION_SET)
-		set_settings(fd);
-	if (action & ACTION_ADDR) {
-		set_addr(fd, addr_str);
-		free(addr_str);
-	}
-	if (action & ACTION_TEST_WRITE) {
-		test_write(fd, xatol(size_str));
-		free(size_str);
-	}
-	if (action & ACTION_TEST_READ) {
-		test_read(fd, xatol(size_str));
-		free(size_str);
-	}
-
-	reti = close(fd);
-	if (reti == -1) {
-		fprintf(stderr, "%s:%d: error: close: %s: %s\n", __FILE__, __LINE__, smi_dev, strerror(errno));
-		exit(EXIT_FAILURE);
+	if (fd != -1) {
+		int reti = close(fd);
+		if (reti == -1) {
+			fprintf(stderr, "%s:%d: error: close: %s\n", __FILE__, __LINE__, strerror(errno));
+			exit(EXIT_FAILURE);
+		}
+		fd = -1;
 	}
 
 	return 0;
