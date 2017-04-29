@@ -182,7 +182,7 @@ static void set_addr(int fd, unsigned int addr)
 	if (verbose)
 		printf("%s:%d: addr = 0x%08x\n", __FILE__, __LINE__, addr);
 
-	reti = ioctl(fd, BCM2835_SMI_IOC_ADDRESS, &addr);
+	reti = ioctl(fd, BCM2835_SMI_IOC_ADDRESS, addr);
 	if (reti == -1) {
 		fprintf(stderr, "%s:%d: error: %s\n", __FILE__, __LINE__, strerror(errno));
 		exit(EXIT_FAILURE);
