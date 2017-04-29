@@ -201,14 +201,17 @@ static void test_write(const int fd, size_t size)
 		if (verbose)
 			printf("%s:%d: Initializing memory\n", __FILE__, __LINE__);
 		for (i = 0; i < size / 4; i += 4) {
-			p[i + 0] = 0x5a;
-			p[i + 1] = 0xa5;
-			p[i + 2] = 0xa5;
-			p[i + 3] = 0x5a;
+			p[i + 0] = 0x53;
+			p[i + 1] = 0x5c;
+			p[i + 2] = 0xac;
+			p[i + 3] = 0xa3;
 		}
-		p[size - 3] = 0xa5;
-		p[size - 2] = 0xa5;
-		p[size - 1] = 0x5a;
+		if (size >= 3)
+			p[size - 3] = 0x5c;
+		if (size >= 2)
+			p[size - 2] = 0xac;
+		if (size >= 1)
+			p[size - 1] = 0xa3;
 	}
 	print_hash(p, size);
 
